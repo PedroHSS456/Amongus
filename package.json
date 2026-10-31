@@ -1,0 +1,10 @@
+{
+  "name": "traidor-orbital",
+  "version": "1.0.0",
+  "description": "Jogo de dedução social 2D multiplayer (original) com servidor autoritativo",
+  "main": "server/server.js",
+  "scripts": { "start": "node server/server.js", "test": "node tests/sim.test.js && node tests/server.test.js" },
+  "engines": { "node": ">=18" },
+  "dependencies": { "ws": "^8.18.0" },
+  "license": "MIT"
+}

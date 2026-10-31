@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#0b1018">
+<title>Traidor Orbital</title>
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<canvas id="cv"></canvas>
+
+<!-- HUD da partida: botões sem fundo nem borda; o joystick é invisível (toque na metade esquerda) -->
+<div id="hud" hidden>
+  <div id="prog"><span id="progt">TAREFAS CONCLUÍDAS</span><i id="progb"></i></div>
+  <div id="tasks"></div>
+  <div id="topr">
+    <button id="b-mic" class="ib" aria-label="Microfone"><img src="img/mic.png" alt=""><em></em></button>
+    <button id="b-chat" class="ib g" aria-label="Chat"><svg viewBox="0 0 24 24"><path d="M4 4h16v12H9l-5 4z"/></svg><u></u></button>
+    <button id="b-set" class="ib g" aria-label="Configurações"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg></button>
+    <button id="b-map" class="ib g" aria-label="Mapa"><svg viewBox="0 0 24 24"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2zM9 4v14M15 6v14"/></svg></button>
+  </div>
+  <div id="alert"></div>
+  <div id="acts">
+    <button id="a-kill" class="ab imp" hidden><b>✖</b><span>MATAR</span><em></em></button>
+    <button id="a-sab" class="ab imp" hidden><b>⚡</b><span>SABOTAR</span><em></em></button>
+    <button id="a-vent" class="ab imp" hidden><b>▦</b><span>DUTO</span></button>
+    <button id="a-disg" class="ab imp" hidden><b>☻</b><span>DISFARCE</span><em></em></button>
+    <button id="a-rep" class="ab"><b>!</b><span>DENUNCIAR</span></button>
+    <button id="a-use" class="ab big"><b>▼</b><span>USAR</span></button>
+  </div>
+</div>
+
+<!-- Menus -->
+<div id="menu">
+  <div id="mleft">
+    <h1>TRAIDOR<br>ORBITAL</h1>
+    <button class="mb" data-go="play">JOGAR</button>
+    <button class="mb" data-go="custom">PERSONALIZAR</button>
+    <button class="mb sm" data-go="settings">DEFINIÇÕES</button>
+    <button class="mb sm" data-go="about">CRÉDITOS</button>
+    <p class="ver" id="ver"></p>
+  </div>
+  <div id="mright">
+    <section data-p="play"><h2>JOGAR</h2><div class="cards"><button class="card" id="c-local"><b>LOCAL</b><span>Jogue já contra bots neste aparelho</span></button><button class="card" data-go="online"><b>ONLINE</b><span>Salas com amigos e bots</span></button></div></section>
+    <section data-p="online" hidden><h2>ONLINE</h2><button class="back" data-go="play">‹ VOLTAR</button><div class="cards"><button class="card" data-go="create"><b>CRIAR PARTIDA</b></button><button class="card" data-go="code"><b>USAR CÓDIGO</b></button><button class="card" data-go="browse"><b>PROCURAR</b></button></div></section>
+    <section data-p="create" hidden><h2>CRIAR PARTIDA</h2><button class="back" data-go="online">‹ VOLTAR</button>
+      <label>Seu nome<input id="in-name" maxlength="14" placeholder="Jogador"></label>
+      <label>Visibilidade<select id="in-pub"><option value="0">Privada (só com código)</option><option value="1">Pública (aparece na busca)</option></select></label>
+      <label>Máx. de participantes (humanos + bots)<input id="in-max" type="number" min="4" max="25" value="25"></label>
+      <button class="go" id="do-create">CRIAR PARTIDA</button><p class="err" id="e-create"></p></section>
+    <section data-p="code" hidden><h2>USAR CÓDIGO</h2><button class="back" data-go="online">‹ VOLTAR</button>
+      <label>Seu nome<input id="in-name2" maxlength="14" placeholder="Jogador"></label>
+      <label>Código da sala<input id="in-code" maxlength="5" placeholder="ABCDE" autocapitalize="characters"></label>
+      <button class="go" id="do-join">ENTRAR NO JOGO</button><p class="err" id="e-code"></p></section>
+    <section data-p="browse" hidden><h2>PROCURAR</h2><button class="back" data-go="online">‹ VOLTAR</button><div id="rooms" class="rooms"></div><button class="go" id="do-refresh">ATUALIZAR</button><p class="err" id="e-browse"></p></section>
+    <section data-p="custom" hidden><h2>PERSONALIZAR</h2><canvas id="prev" width="180" height="200"></canvas><div class="lbl">Cor</div><div id="colors" class="sw"></div><div class="lbl">Acessório</div><div id="hats" class="chips"></div><label>Nome padrão<input id="in-name3" maxlength="14" placeholder="Jogador"></label></section>
+    <section data-p="settings" hidden><h2>DEFINIÇÕES</h2>
+      <label>Efeitos sonoros<input type="range" id="s-sfx" min="0" max="100"></label>
+      <label>Gráficos<select id="s-gfx"><option value="0">Baixo</option><option value="1">Médio</option><option value="2">Alto</option></select></label>
+      <label>Microfone<select id="s-mic"><option value="open">Transmissão contínua</option><option value="ptt">Pressionar para falar (segure o botão ou V)</option></select></label>
+      <label>Redução de ruído<select id="s-ns"><option value="1">Ligada</option><option value="0">Desligada</option></select></label>
+      <label>Volume do chat de voz<input type="range" id="s-vol" min="0" max="100"></label></section>
+    <section data-p="about" hidden><h2>CRÉDITOS</h2><p class="note">Traidor Orbital é um jogo de dedução social original. Personagens, mapa e interface foram criados para este projeto.</p></section>
+  </div>
+</div>
+
+<!-- Sala de espera -->
+<div id="lobby" hidden>
+  <div class="lh"><button id="l-leave" class="back">‹ SAIR</button><h2>SALA <b id="l-code"></b></h2><span id="l-count"></span></div>
+  <div class="lcols"><div id="l-roster" class="roster"></div>
+  <div class="lside"><div id="l-set" class="set"></div><div id="l-chat" class="lchat"><div id="l-msgs"></div><form id="l-form"><input id="l-in" maxlength="120" placeholder="Mensagem"><button>›</button></form></div></div></div>
+  <div class="lf"><button id="l-start" class="go">INICIAR PARTIDA</button><p id="l-note"></p></div>
+</div>
+
+<!-- Reunião -->
+<div id="meet" hidden>
+  <div class="mhead"><span id="m-title"></span><button id="m-mic" class="ib"><img src="img/mic.png" alt=""><em></em></button><button id="m-chatb" class="ib g"><svg viewBox="0 0 24 24"><path d="M4 4h16v12H9l-5 4z"/></svg><u></u></button></div>
+  <div id="m-grid"></div><button id="m-skip">IGNORAR VOTAÇÃO</button><div id="m-time"></div>
+  <div id="m-chat" hidden><div id="m-msgs"></div><form id="m-form"><input id="m-in" maxlength="120" placeholder="Digite sua mensagem"><button>Enviar</button></form></div>
+  <div id="m-res" hidden></div>
+</div>
+
+<div id="endscr" hidden></div>
+<div id="mini" hidden></div>
+<div id="mapov" hidden><canvas id="mapcv"></canvas><button id="mapx" class="ib g">✕</button><div id="sabm" hidden></div></div>
+<div id="toast"></div>
+<script src="js/config.js"></script>
+<script src="shared/map.js"></script>
+<script src="shared/bots.js"></script>
+<script src="shared/sim.js"></script>
+<script src="js/draw.js"></script>
+<script src="js/mini.js"></script>
+<script src="js/app.js"></script>
+<script src="js/app2.js"></script>
+</body>
+</html>
