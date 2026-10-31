@@ -3,7 +3,7 @@
 const WebSocket = require('ws'), http = require('http'), assert = require('assert');
 const srv = require('../server/server.js'); let n = 0; const ok = (c, m) => { assert(c, m); n++; console.log('ok', n, m); };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-function cl(port, token) { return new Promise((res) => { const ws = new WebSocket('ws://localhost:' + port + '/ws'); const c = { ws, v: null, id: 0, code: null, errs: [], token }; ws.on('message', (d) => { const m = JSON.parse(d); if (m.t === 'hi') { c.id = m.id; c.code = m.code; } else if (m.t === 'view') c.v = m.v; else if (m.t === 'err') c.errs.push(m.msg); }); c.send = (o) => ws.send(JSON.stringify(o)); c.in = (m) => c.send({ t: 'in', m }); ws.on('open', () => res(c)); }); }
+function cl(port, token) { return new Promise((res) => { const ws = new WebSocket('ws://localhost:' + port + '/ws'); const c = { ws, v: null, id: 0, code: null, errs: [], bin: [], token }; ws.on('message', (d, isBin) => { if (isBin) { c.bin.push(Buffer.from(d)); return; } const m = JSON.parse(d); if (m.t === 'hi') { c.id = m.id; c.code = m.code; } else if (m.t === 'view') c.v = m.v; else if (m.t === 'err') c.errs.push(m.msg); }); c.send = (o) => ws.send(JSON.stringify(o)); c.in = (m) => c.send({ t: 'in', m }); ws.on('open', () => res(c)); }); }
 const get = (port, p) => new Promise((r) => http.get('http://localhost:' + port + p, (res) => { let b = ''; res.on('data', (d) => (b += d)); res.on('end', () => r({ s: res.statusCode, b })); }));
 (async () => {
   await new Promise((r) => srv.listen(0, r)); const port = srv.server.address().port;
@@ -36,5 +36,18 @@ const get = (port, p) => new Promise((r) => http.get('http://localhost:' + port 
   // reconexão
   const bid = b.id; b.ws.close(); await sleep(300); ok(a.v.roster.find((r) => r.id === bid).on === false, 'desconexão marcada na partida em andamento'); const b2 = await cl(port, 'tokenBBBBBBBB'); b2.send({ t: 'join', code: a.code, name: 'Beto', token: b2.token }); await sleep(300); ok(b2.id === bid && b2.v.phase === 'play' && b2.v.you.role, 'reconexão com o mesmo token reassume o personagem e a função');
   const o2 = await cl(port, 'tokenNOVO0000'); o2.send({ t: 'join', code: a.code, name: 'Tarde', token: o2.token }); await sleep(200); ok(o2.errs.some((e) => /andamento/i.test(e)), 'novo jogador não entra com a partida em andamento');
+  const o3 = hs[0];
+  // voz por proximidade (servidor decide quem ouve)
+  const room = srv.rooms.get(a.code), P = (c) => room.sim.players.get(c.id), frame = Buffer.alloc(1 + 1364); frame[0] = 1; const mkc = async (t, nm) => { const c = await cl(port, t); c.send({ t: 'join', code: a.code, name: nm, token: t }); return c; };
+  const place = (c, x, y) => { const p = P(c); p.x = x; p.y = y; p.doing = null; p.vent = null; p.alive = true; p.mv = [0, 0]; }; room.sim.phase = 'play'; room.sim.closed = room.sim.closed.map(() => 0);
+  const shout = async () => { a.bin.length = 0; b2.bin.length = 0; o3.bin.length = 0; a.ws.send(frame); await sleep(150); };
+  place(a, 25, 12); place(b2, 30, 12); place(o3, 25, 5); await shout(); const nearF = b2.bin[0]; ok(nearF && nearF[0] === 2 && nearF.readUInt16LE(1) === a.id && nearF[3] > 60, 'voz: ouvinte a 5 tiles (alcance 8) recebe com ganho proporcional');
+  ok(o3.bin.length === 1 && (o3.bin[0][4] & 1) === 1 && o3.bin[0][3] < nearF[3], 'voz: parede no caminho => som abafado e mais baixo');
+  place(b2, 50, 33); await shout(); ok(b2.bin.length === 0, 'voz: fora do alcance não recebe nenhum dado');
+  P(a).vent = 3; place(b2, 26, 12); await shout(); ok(b2.bin.length === 0 && o3.bin.length === 0, 'voz: impostor dentro do duto não é ouvido'); P(a).vent = null;
+  P(a).alive = false; place(b2, 26, 12); await shout(); ok(b2.bin.length === 0, 'voz: fantasma não é ouvido por vivos');
+  P(a).alive = true; room.sim.s.voiceRange = 3;  place(b2, 30, 12); await shout(); ok(b2.bin.length === 0, 'voz: alcance configurável pelo administrador (3 tiles)'); room.sim.s.voiceRange = 8;
+  room.sim.startMeeting(P(a), null); await shout(); ok(b2.bin.length === 1 && b2.bin[0][3] === 255, 'voz: na reunião todos ouvem (opção ligada)'); room.sim.s.voiceMeeting = false; await shout(); ok(b2.bin.length === 0, 'voz: opção de voz na reunião desligada');
+  room.sim.phase = 'play';
   console.log('\nTODOS OS ' + n + ' TESTES DO SERVIDOR PASSARAM'); process.exit(0);
 })().catch((e) => { console.error('FALHOU', e); process.exit(1); });

@@ -29,12 +29,12 @@
   function connect(first) {
     leaveGame(true); online = true; leaving = false; retry = 0; let ws = null, closed = false, first0 = first;
     const open = (msg) => {
-      ws = new WebSocket(server().replace(/^http/, 'ws') + '/ws');
+      ws = new WebSocket(server().replace(/^http/, 'ws') + '/ws'); ws.binaryType = 'arraybuffer';
       ws.onopen = () => { ws.send(JSON.stringify(msg)); };
-      ws.onmessage = (e) => { let m; try { m = JSON.parse(e.data); } catch (x) { return; } if (m.t === 'hi') { myId = m.id; roomCode = m.code; retry = 0; first0 = { t: 'join', code: m.code, token: cfg.token, name: cfg.name }; } else if (m.t === 'view') { V = m.v; onView(); } else if (m.t === 'err') { toast(m.msg); if (!V) { closed = true; showErr(m.msg); } } };
+      ws.onmessage = (e) => { if (typeof e.data !== 'string') { voiceIn(e.data); return; } let m; try { m = JSON.parse(e.data); } catch (x) { return; } if (m.t === 'hi') { myId = m.id; roomCode = m.code; retry = 0; first0 = { t: 'join', code: m.code, token: cfg.token, name: cfg.name }; } else if (m.t === 'view') { V = m.v; onView(); } else if (m.t === 'err') { toast(m.msg); if (!V) { closed = true; showErr(m.msg); } } };
       ws.onclose = () => { if (closed || leaving) return; if (!V) { showErr('Não foi possível conectar ao servidor.'); return; } if (retry++ > 40) { toast('Conexão perdida.'); leaveGame(); return; } toast('Reconectando… (' + retry + ')'); setTimeout(() => { if (!closed && !leaving) open(first0); }, 1500); };
     };
-    T = { send: (m) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'in', m })); }, close: () => { closed = true; try { ws.close(); } catch (e) {} } }; open(first);
+    T = { sendBin: (b) => { if (ws && ws.readyState === 1 && ws.bufferedAmount < 64000) ws.send(b); }, send: (m) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'in', m })); }, close: () => { closed = true; try { ws.close(); } catch (e) {} } }; open(first);
   }
   let errEl = 'e-create'; function showErr(s) { const e = $(errEl); if (e) e.textContent = s; }
   function leaveGame(quiet) { leaving = true; if (T) { try { T.send({ t: 'leave' }); } catch (e) {} T.close(); } T = null; V = null; lastPhase = ''; lastEv = 0; Mini.close(false); closeMap(); closeModal(); screen(); if (!quiet) { toast('Você saiu da sala'); } }
@@ -109,9 +109,9 @@
   }
   setInterval(() => { let sp = false; if (mic.an && mic.talk) { mic.an.getFloatTimeDomainData(mic.buf); let s = 0; for (let i = 0; i < mic.buf.length; i++) s += mic.buf[i] * mic.buf[i]; sp = Math.sqrt(s / mic.buf.length) > 0.02; } if (sp !== mic.speak) { mic.speak = sp; micUpdate(); } }, 90);
   ['b-mic', 'm-mic'].forEach((id) => { const b = $(id); b.addEventListener('pointerdown', (e) => { e.preventDefault(); if (cfg.mic === 'ptt' && mic.on) { mic.ptt = true; micUpdate(); } else micToggle(); }); const up = () => { if (mic.ptt && cfg.mic === 'ptt') { mic.ptt = false; micUpdate(); } }; b.addEventListener('pointerup', up); b.addEventListener('pointerleave', up); b.addEventListener('pointercancel', up); });
-  function voiceStart() {} function voiceVol() {} // voz por proximidade: Fase 2 (ver voice.js)
+  let voiceStart = () => {}, voiceVol = () => {}, voiceIn = () => {}; // voz por proximidade: Fase 2 (ver voice.js)
   micUpdate();
-  window.AU = { cfg, save, send, toast, mic, micUpdate, icon, mkIcon, esc, SFX, get V() { return V; }, get myId() { return myId; }, set voiceStart(f) { voiceStart = f; }, set voiceVol(f) { voiceVol = f; } };
+  window.AU = { ac, sendBin: (b) => { if (T && T.sendBin) T.sendBin(b); }, get online() { return online; }, set voiceIn(f) { voiceIn = f; }, cfg, save, send, toast, mic, micUpdate, icon, mkIcon, esc, SFX, get V() { return V; }, get myId() { return myId; }, set voiceStart(f) { voiceStart = f; }, set voiceVol(f) { voiceVol = f; } };
   // ---- continua em app2.js (UI, loop de render) ----
   window.AU._core = { startLocal, connect, leaveGame, pumpInput, act, usable, nearBody, nearVent, closeMap, openModal, closeModal, get online() { return online; }, get face() { return face; }, get roomCode() { return roomCode; }, setErr(id) { errEl = id; }, get T() { return T; }, get mapOpen() { return !$('mapov').hidden; }, get modal() { return modal; } };
   let onViewImpl = () => {}, screenImpl = () => {}, resize = () => {}; function onView() { onViewImpl(); } function screen() { screenImpl(); }

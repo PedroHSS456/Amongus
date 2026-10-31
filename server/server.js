@@ -1,7 +1,7 @@
 'use strict';
 /* Servidor autoritativo: HTTP estático (web/) + WebSocket (/ws) + API de salas públicas. A simulação roda aqui; clientes só enviam entradas. */
 const http = require('http'), fs = require('fs'), path = require('path'), { WebSocketServer } = require('ws');
-const Sim = require('../web/shared/sim.js');
+const Sim = require('../web/shared/sim.js'), M = require('../web/shared/map.js');
 const WEB = path.join(__dirname, '..', 'web'), TICK = 50, MAXMSG = 2048, RATE = 90;
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml', '.json': 'application/json', '.ico': 'image/x-icon' };
 const rooms = new Map(); // code -> { code, sim, conns: Map(id -> ws), idle }
@@ -18,12 +18,27 @@ const server = http.createServer((req, res) => {
   if (!full.startsWith(WEB)) { res.writeHead(403); return res.end(); }
   fs.readFile(full, (e, d) => { if (e) { res.writeHead(404); return res.end('404'); } res.writeHead(200, { 'content-type': MIME[path.extname(full)] || 'application/octet-stream', 'cache-control': 'no-cache' }); res.end(d); });
 });
+
+// ---- voz por proximidade: o cliente envia PCM 16 kHz; o servidor calcula distância/oclusão e repassa só a quem pode ouvir ----
+function reverbLevel(x, y) { const n = M.roomName(x, y), r = M.ROOMS.find((q) => q[0] === n); if (!r) return 3; const a = r[3] * r[4]; return a > 110 ? 2 : 1; }
+function voiceRoute(r, sid, pcm) {
+  const s = r.sim, me = s.players.get(sid); if (!me || me.vent != null) return; const rng = s.s.voiceRange; const lvl = reverbLevel(me.x, me.y);
+  for (const [pid, ws] of r.conns) {
+    if (pid === sid || ws.readyState !== 1 || ws.bufferedAmount > 200000) continue; const q = s.players.get(pid); if (!q) continue; let g = 0, muff = 0;
+    if (s.phase === 'lobby' || s.phase === 'end') g = 1;
+    else if (s.phase === 'meeting') { if (!me.alive) g = q.alive ? 0 : 1; else g = s.s.voiceMeeting ? 1 : 0; }
+    else if (s.phase === 'play') { if (!me.alive && q.alive) continue; const d = Math.hypot(me.x - q.x, me.y - q.y); if (d > rng) continue; const clear = M.los(me.x, me.y, q.x, q.y, s.closed); g = Math.pow(1 - d / rng, 1.4); if (!clear) { g *= 0.55; muff = 1; } if (!me.alive && !q.alive) g = Math.max(g, 0.6); }
+    if (g <= 0.02) continue; const b = Buffer.allocUnsafe(5 + pcm.length); b[0] = 2; b.writeUInt16LE(sid & 0xffff, 1); b[3] = Math.round(Math.min(1, g) * 255); b[4] = muff | ((s.phase === 'play' ? lvl : 0) << 1); pcm.copy(b, 5); ws.send(b, { binary: true });
+  }
+}
 const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 16384 });
 const out = (ws, o) => { if (ws.readyState === 1) ws.send(JSON.stringify(o)); };
 wss.on('connection', (ws) => {
   let room = null, id = 0, tokens = RATE, lastRefill = Date.now(); ws.isAlive = true; ws.on('pong', () => { ws.isAlive = true; });
   const bind = (r, res) => { if (res.err) return out(ws, { t: 'err', msg: res.err }); room = r; id = res.id; const old = r.conns.get(id); if (old && old !== ws) { try { old.close(); } catch (e) {} } r.conns.set(id, ws); r.idle = 0; ws.pid = id; out(ws, { t: 'hi', id, code: r.code }); };
-  ws.on('message', (raw) => {
+  let vTok = 40, vLast = Date.now();
+  ws.on('message', (raw, isBin) => {
+    if (isBin) { if (!room || raw.length < 40 || raw.length > 4000 || raw[0] !== 1) return; const t = Date.now(); vTok = Math.min(40, vTok + (t - vLast) / 1000 * 40); vLast = t; if (vTok < 1) return; vTok--; return voiceRoute(room, id, raw.subarray(1)); }
     if (raw.length > MAXMSG) return; const now = Date.now(); tokens = Math.min(RATE, tokens + (now - lastRefill) / 1000 * RATE); lastRefill = now; if (tokens < 1) return; tokens--;
     let m; try { m = JSON.parse(raw); } catch (e) { return; } if (!m || typeof m !== 'object') return;
     if (!room) {
